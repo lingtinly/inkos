@@ -105,6 +105,32 @@ function Ensure-DesktopLauncher {
     }
 }
 
+function Install-NovelsSkillPresets([string]$Root) {
+    $sourceRoot = Join-Path $repoRoot "presets\novel-skills"
+    if (-not (Test-Path $sourceRoot)) { return }
+
+    $targetRoot = Join-Path $Root ".agents\skills"
+    New-Item -ItemType Directory -Force -Path $targetRoot | Out-Null
+    $installed = @()
+
+    Get-ChildItem -Path $sourceRoot -Directory | ForEach-Object {
+        $sourceSkill = $_.FullName
+        $targetSkill = Join-Path $targetRoot $_.Name
+        $targetManifest = Join-Path $targetSkill "SKILL.md"
+        if (-not (Test-Path $targetManifest)) {
+            New-Item -ItemType Directory -Force -Path $targetSkill | Out-Null
+            Copy-Item -Path (Join-Path $sourceSkill "*") -Destination $targetSkill -Recurse -Force
+            $installed += $_.Name
+        }
+    }
+
+    if ($installed.Count -gt 0) {
+        Write-Host "[InkOS Novels] Installed writing skills: $($installed -join ', ')"
+    } else {
+        Write-Host "[InkOS Novels] Writing skill presets already present; user edits preserved."
+    }
+}
+
 # If an existing instance is already alive, a double-click should simply reopen it.
 try {
     $existing = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:4567" -TimeoutSec 1
@@ -119,6 +145,7 @@ catch { }
 
 New-Item -ItemType Directory -Force -Path $ProjectRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $CodexHome | Out-Null
+Install-NovelsSkillPresets $ProjectRoot
 
 # Keep novel-writing Codex state isolated from the user's normal VS Code/Codex
 # state. This prevents accumulated coding sessions, MCP servers, project rules,
