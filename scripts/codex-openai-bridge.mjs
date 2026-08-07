@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-// Compatibility entrypoint kept for the existing InkOS launcher.
-// The v2 bridge prefers one persistent `codex app-server` process for lower
-// startup latency and true assistant-text streaming, while retaining the
-// already-proven `codex exec` path as an automatic fallback.
-import "./codex-openai-bridge-v2.mjs";
+// Stable entrypoint used by the InkOS launcher.
+// v3 runs Codex app-server as a persistent process, strips coding-agent overhead
+// for text-only fiction work, uses low/none reasoning for latency, exposes
+// diagnostics, and keeps the proven codex exec path as a fallback.
+import "./codex-openai-bridge-v3.mjs";
