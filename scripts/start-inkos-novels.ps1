@@ -105,29 +105,72 @@ function Ensure-DesktopLauncher {
     }
 }
 
+function Get-SkillVersion([string]$ManifestPath) {
+    if (-not (Test-Path $ManifestPath)) { return $null }
+    try {
+        $text = [System.IO.File]::ReadAllText($ManifestPath)
+        $match = [regex]::Match($text, '(?m)^version:\s*([0-9]+(?:\.[0-9]+){1,3})\s*$')
+        if (-not $match.Success) { return $null }
+        return [version]$match.Groups[1].Value
+    }
+    catch {
+        return $null
+    }
+}
+
 function Install-NovelsSkillPresets([string]$Root) {
     $sourceRoot = Join-Path $repoRoot "presets\novel-skills"
     if (-not (Test-Path $sourceRoot)) { return }
 
     $targetRoot = Join-Path $Root ".agents\skills"
+    $backupRoot = Join-Path $Root ".agents\skill-backups"
     New-Item -ItemType Directory -Force -Path $targetRoot | Out-Null
+
     $installed = @()
+    $updated = @()
+    $preserved = @()
 
     Get-ChildItem -Path $sourceRoot -Directory | ForEach-Object {
+        $skillName = $_.Name
         $sourceSkill = $_.FullName
-        $targetSkill = Join-Path $targetRoot $_.Name
+        $sourceManifest = Join-Path $sourceSkill "SKILL.md"
+        $targetSkill = Join-Path $targetRoot $skillName
         $targetManifest = Join-Path $targetSkill "SKILL.md"
+
         if (-not (Test-Path $targetManifest)) {
             New-Item -ItemType Directory -Force -Path $targetSkill | Out-Null
             Copy-Item -Path (Join-Path $sourceSkill "*") -Destination $targetSkill -Recurse -Force
-            $installed += $_.Name
+            $installed += $skillName
+            return
+        }
+
+        $sourceVersion = Get-SkillVersion $sourceManifest
+        $targetVersion = Get-SkillVersion $targetManifest
+
+        # Versioned presets can upgrade an older installed preset. Back up the
+        # entire old skill first so local customizations are never destroyed.
+        # Same-version local edits are preserved on normal restarts.
+        if ($null -ne $sourceVersion -and $null -ne $targetVersion -and $sourceVersion -gt $targetVersion) {
+            New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+            $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+            $backupSkill = Join-Path $backupRoot ("{0}-v{1}-{2}" -f $skillName, $targetVersion, $timestamp)
+            Copy-Item -Path $targetSkill -Destination $backupSkill -Recurse -Force
+            Copy-Item -Path (Join-Path $sourceSkill "*") -Destination $targetSkill -Recurse -Force
+            $updated += ("{0} {1}->{2}" -f $skillName, $targetVersion, $sourceVersion)
+        }
+        else {
+            $preserved += $skillName
         }
     }
 
     if ($installed.Count -gt 0) {
         Write-Host "[InkOS Novels] Installed writing skills: $($installed -join ', ')"
-    } else {
-        Write-Host "[InkOS Novels] Writing skill presets already present; user edits preserved."
+    }
+    if ($updated.Count -gt 0) {
+        Write-Host "[InkOS Novels] Updated writing skills (old copies backed up): $($updated -join ', ')"
+    }
+    if ($installed.Count -eq 0 -and $updated.Count -eq 0) {
+        Write-Host "[InkOS Novels] Writing skill presets already current; same-version user edits preserved."
     }
 }
 
