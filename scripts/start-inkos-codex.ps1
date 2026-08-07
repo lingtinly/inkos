@@ -19,6 +19,35 @@ function Require-Success([string]$Label) {
     }
 }
 
+function Invoke-NativeCapture([string]$FilePath, [string[]]$Arguments) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.Arguments = ($Arguments | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    }) -join ' '
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) {
+        throw "Failed to start native command: $FilePath"
+    }
+
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+
+    return [pscustomobject]@{
+        ExitCode = $process.ExitCode
+        Stdout = $stdout
+        Stderr = $stderr
+        Combined = (($stdout + "`n" + $stderr).Trim())
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $ProjectRoot) {
     $ProjectRoot = Join-Path $HOME "Documents\InkOS-Novels\codex-workspace"
@@ -45,9 +74,10 @@ if (-not $codex) {
     throw "Codex CLI is required. Run scripts/bootstrap-codex-bridge.ps1 first."
 }
 
-$loginStatus = (& $codex login status 2>&1 | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $loginStatus -notmatch "Logged in using ChatGPT") {
-    throw "Codex is not logged in with ChatGPT. Run 'codex login' and choose ChatGPT sign-in first."
+$loginProbe = Invoke-NativeCapture $codex @("login", "status")
+$loginStatus = $loginProbe.Combined
+if ($loginProbe.ExitCode -ne 0 -or $loginStatus -notmatch "Logged in using ChatGPT") {
+    throw "Codex is not logged in with ChatGPT. Run 'codex login' and choose ChatGPT sign-in first. Current status: $loginStatus"
 }
 Write-Host "[InkOS Codex] ChatGPT login: OK"
 
