@@ -1,11 +1,11 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [string]$ProjectRoot = "",
     [int]$StudioPort = 4567,
     [int]$BridgePort = 43127,
     [string]$Model = "gpt-5.6-sol"
 )
+
+$ErrorActionPreference = "Stop"
 
 function Get-CommandPath([string]$Name) {
     $cmd = Get-Command $Name -ErrorAction SilentlyContinue
