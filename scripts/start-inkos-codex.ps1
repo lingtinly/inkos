@@ -48,6 +48,47 @@ function Invoke-NativeCapture([string]$FilePath, [string[]]$Arguments) {
     }
 }
 
+function Write-Utf8NoBom([string]$Path, [string]$Text) {
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Text, $encoding)
+}
+
+function New-BridgeProjectConfig([string]$BaseUrl, [string]$ModelId) {
+    return [ordered]@{
+        name = "ChatGPT Plus Novel Workspace"
+        version = "0.1.0"
+        language = "zh"
+        llm = [ordered]@{
+            provider = "openai"
+            service = "custom:ChatGPT Plus Codex"
+            configSource = "studio"
+            baseUrl = $BaseUrl
+            apiKey = ""
+            model = $ModelId
+            defaultModel = $ModelId
+            temperature = 0.7
+            thinkingBudget = 0
+            apiFormat = "chat"
+            stream = $true
+            services = @(
+                [ordered]@{
+                    service = "custom"
+                    name = "ChatGPT Plus Codex"
+                    baseUrl = $BaseUrl
+                    apiFormat = "chat"
+                    stream = $true
+                }
+            )
+        }
+    }
+}
+
+function Save-BridgeProjectConfig([string]$Path, [string]$BaseUrl, [string]$ModelId) {
+    $config = New-BridgeProjectConfig $BaseUrl $ModelId
+    $json = $config | ConvertTo-Json -Depth 12
+    Write-Utf8NoBom $Path $json
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $ProjectRoot) {
     $ProjectRoot = Join-Path $HOME "Documents\InkOS-Novels\codex-workspace"
@@ -116,37 +157,29 @@ try {
 
     New-Item -ItemType Directory -Force -Path $ProjectRoot | Out-Null
     $configPath = Join-Path $ProjectRoot "inkos.json"
+    $baseUrl = "http://127.0.0.1:$BridgePort/v1"
+
     if (-not (Test-Path $configPath)) {
-        $baseUrl = "http://127.0.0.1:$BridgePort/v1"
-        $config = [ordered]@{
-            name = "ChatGPT Plus Novel Workspace"
-            version = "0.1.0"
-            language = "zh"
-            llm = [ordered]@{
-                provider = "openai"
-                service = "custom:ChatGPT Plus Codex"
-                configSource = "studio"
-                baseUrl = $baseUrl
-                apiKey = ""
-                model = $Model
-                defaultModel = $Model
-                temperature = 0.7
-                thinkingBudget = 0
-                apiFormat = "chat"
-                stream = $true
-                services = @(
-                    [ordered]@{
-                        service = "custom"
-                        name = "ChatGPT Plus Codex"
-                        baseUrl = $baseUrl
-                        apiFormat = "chat"
-                        stream = $true
-                    }
-                )
+        Save-BridgeProjectConfig $configPath $baseUrl $Model
+        Write-Host "[InkOS Codex] Created preconfigured project: $configPath"
+    }
+    else {
+        $rawConfig = [System.IO.File]::ReadAllText($configPath)
+        $cleanConfig = $rawConfig.TrimStart([char]0xFEFF)
+        $needsRewrite = $rawConfig.Length -ne $cleanConfig.Length
+        try {
+            $null = $cleanConfig | ConvertFrom-Json
+            if ($needsRewrite) {
+                Write-Utf8NoBom $configPath $cleanConfig
+                Write-Host "[InkOS Codex] Repaired UTF-8 BOM in existing inkos.json"
             }
         }
-        $config | ConvertTo-Json -Depth 12 | Set-Content -Path $configPath -Encoding UTF8
-        Write-Host "[InkOS Codex] Created preconfigured project: $configPath"
+        catch {
+            $backupPath = "$configPath.invalid-$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
+            Copy-Item -Path $configPath -Destination $backupPath -Force
+            Save-BridgeProjectConfig $configPath $baseUrl $Model
+            Write-Host "[InkOS Codex] Repaired invalid inkos.json (backup: $backupPath)"
+        }
     }
 
     $env:INKOS_CODEX_BRIDGE_PORT = "$BridgePort"
