@@ -20,6 +20,59 @@ function Write-Utf8NoBom([string]$Path, [string]$Text) {
     [System.IO.File]::WriteAllText($Path, $Text, $encoding)
 }
 
+function Get-CommandPath([string]$Name) {
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($null -eq $cmd) { return $null }
+    return $cmd.Source
+}
+
+function Invoke-NativeCapture([string]$FilePath, [string[]]$Arguments) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.Arguments = ($Arguments | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    }) -join ' '
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "Failed to start native command: $FilePath" }
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    return [pscustomobject]@{
+        ExitCode = $process.ExitCode
+        Combined = (($stdout + "`n" + $stderr).Trim())
+    }
+}
+
+function Ensure-IsolatedCodexLogin([string]$HomePath) {
+    $codex = Get-CommandPath "codex.cmd"
+    if (-not $codex) { throw "Codex CLI is required." }
+
+    $probe = Invoke-NativeCapture $codex @("login", "status")
+    if ($probe.ExitCode -eq 0 -and $probe.Combined -match "Logged in using ChatGPT") {
+        Write-Host "[InkOS Novels] Isolated ChatGPT login: OK"
+        return
+    }
+
+    Write-Host "[InkOS Novels] One-time ChatGPT login is required for the isolated novel-writing Codex environment."
+    Write-Host "[InkOS Novels] Complete the ChatGPT sign-in in the browser window that opens."
+    $login = Start-Process -FilePath $codex -ArgumentList @("login") -Wait -PassThru -NoNewWindow
+    if ($login.ExitCode -ne 0) {
+        throw "Codex login for the isolated novel-writing environment failed with exit code $($login.ExitCode)."
+    }
+
+    $probe = Invoke-NativeCapture $codex @("login", "status")
+    if ($probe.ExitCode -ne 0 -or $probe.Combined -notmatch "Logged in using ChatGPT") {
+        throw "The isolated novel-writing Codex environment is still not logged in."
+    }
+    Write-Host "[InkOS Novels] Isolated ChatGPT login: OK"
+}
+
 function Set-DefaultModel([string]$Root, [string]$ModelId) {
     $configPath = Join-Path $Root "inkos.json"
     if (-not (Test-Path $configPath)) { return }
@@ -73,6 +126,7 @@ New-Item -ItemType Directory -Force -Path $CodexHome | Out-Null
 # InkOS fiction thread. Authentication is performed once for this isolated home.
 $env:CODEX_HOME = $CodexHome
 Write-Host "[InkOS Novels] Isolated CODEX_HOME: $CodexHome"
+Ensure-IsolatedCodexLogin $CodexHome
 
 Set-DefaultModel $ProjectRoot $Model
 Ensure-DesktopLauncher
