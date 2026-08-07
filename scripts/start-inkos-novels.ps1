@@ -1,6 +1,7 @@
 param(
     [string]$ProjectRoot = "",
-    [string]$Model = "gpt-5.6-luna"
+    [string]$Model = "gpt-5.6-luna",
+    [string]$CodexHome = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,7 +9,11 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $ProjectRoot) {
     $ProjectRoot = Join-Path $HOME "Documents\InkOS-Novels\codex-workspace"
 }
+if (-not $CodexHome) {
+    $CodexHome = Join-Path $HOME "Documents\InkOS-Novels\codex-home"
+}
 $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
+$CodexHome = [System.IO.Path]::GetFullPath($CodexHome)
 
 function Write-Utf8NoBom([string]$Path, [string]$Text) {
     $encoding = New-Object System.Text.UTF8Encoding($false)
@@ -60,6 +65,15 @@ try {
 catch { }
 
 New-Item -ItemType Directory -Force -Path $ProjectRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $CodexHome | Out-Null
+
+# Keep novel-writing Codex state isolated from the user's normal VS Code/Codex
+# state. This prevents accumulated coding sessions, MCP servers, project rules,
+# and other developer-oriented state under ~/.codex from being loaded into each
+# InkOS fiction thread. Authentication is performed once for this isolated home.
+$env:CODEX_HOME = $CodexHome
+Write-Host "[InkOS Novels] Isolated CODEX_HOME: $CodexHome"
+
 Set-DefaultModel $ProjectRoot $Model
 Ensure-DesktopLauncher
 
