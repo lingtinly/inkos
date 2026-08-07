@@ -89,6 +89,47 @@ function Save-BridgeProjectConfig([string]$Path, [string]$BaseUrl, [string]$Mode
     Write-Utf8NoBom $Path $json
 }
 
+function Ensure-BridgeSecret([string]$Root) {
+    # InkOS Studio resolves credentials from .inkos/secrets.json even when the
+    # selected endpoint is local and does not actually require authentication.
+    # pi-ai's OpenAI transport still refuses an empty key before it sends the
+    # localhost request, so keep a harmless local-only placeholder credential.
+    $serviceKey = "custom:ChatGPT Plus Codex"
+    $placeholderKey = "local-codex-bridge"
+    $secretsDir = Join-Path $Root ".inkos"
+    $secretsPath = Join-Path $secretsDir "secrets.json"
+    New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null
+
+    $services = [ordered]@{}
+    if (Test-Path $secretsPath) {
+        try {
+            $parsed = [System.IO.File]::ReadAllText($secretsPath) | ConvertFrom-Json
+            if ($null -ne $parsed.services) {
+                foreach ($property in $parsed.services.PSObject.Properties) {
+                    $existingKey = ""
+                    if ($null -ne $property.Value -and $null -ne $property.Value.apiKey) {
+                        $existingKey = [string]$property.Value.apiKey
+                    }
+                    $services[$property.Name] = [ordered]@{ apiKey = $existingKey }
+                }
+            }
+        }
+        catch {
+            $backupPath = "$secretsPath.invalid-$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
+            Copy-Item -Path $secretsPath -Destination $backupPath -Force
+            Write-Host "[InkOS Codex] Backed up invalid secrets file: $backupPath"
+        }
+    }
+
+    $alreadyConfigured = $services.Contains($serviceKey) -and $services[$serviceKey].apiKey
+    if (-not $alreadyConfigured) {
+        $services[$serviceKey] = [ordered]@{ apiKey = $placeholderKey }
+        $payload = [ordered]@{ services = $services } | ConvertTo-Json -Depth 8
+        Write-Utf8NoBom $secretsPath $payload
+        Write-Host "[InkOS Codex] Installed local bridge credential shim"
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $ProjectRoot) {
     $ProjectRoot = Join-Path $HOME "Documents\InkOS-Novels\codex-workspace"
@@ -166,13 +207,11 @@ try {
     else {
         $rawConfig = [System.IO.File]::ReadAllText($configPath)
         $cleanConfig = $rawConfig.TrimStart([char]0xFEFF)
-        $needsRewrite = $rawConfig.Length -ne $cleanConfig.Length
         try {
             $null = $cleanConfig | ConvertFrom-Json
-            if ($needsRewrite) {
-                Write-Utf8NoBom $configPath $cleanConfig
-                Write-Host "[InkOS Codex] Repaired UTF-8 BOM in existing inkos.json"
-            }
+            # Always normalize a valid existing config to UTF-8 without BOM.
+            # .NET ReadAllText may consume the BOM before PowerShell can detect it.
+            Write-Utf8NoBom $configPath $cleanConfig
         }
         catch {
             $backupPath = "$configPath.invalid-$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
@@ -181,6 +220,8 @@ try {
             Write-Host "[InkOS Codex] Repaired invalid inkos.json (backup: $backupPath)"
         }
     }
+
+    Ensure-BridgeSecret $ProjectRoot
 
     $env:INKOS_CODEX_BRIDGE_PORT = "$BridgePort"
     $env:INKOS_CODEX_MODEL = $Model
