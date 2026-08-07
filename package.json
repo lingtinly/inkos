@@ -29,6 +29,8 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
+    "codex:bridge": "node scripts/codex-openai-bridge.mjs",
+    "codex:bridge:check": "node scripts/codex-openai-bridge.mjs --check",
     "audit:semantic-patterns": "node scripts/audit-semantic-patterns.mjs",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli packages/studio",
     "benchmark:studio-e2e": "node scripts/studio-e2e-benchmark.mjs",
