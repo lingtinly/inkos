@@ -63,8 +63,13 @@ New-Item -ItemType Directory -Force -Path $ProjectRoot | Out-Null
 Set-DefaultModel $ProjectRoot $Model
 Ensure-DesktopLauncher
 
-# v2 bridge policy: Terra/Luna use low reasoning for responsiveness; Sol uses medium.
+# v3 fiction-optimized bridge:
+# - persistent Codex app-server
+# - text-only agent instructions / no execution environment
+# - Terra/Luna reasoning=none, Sol=low
+# - per-request TTFT/latency diagnostics at http://127.0.0.1:43127/diagnostics
 $env:INKOS_CODEX_APP_SERVER = "1"
+$env:INKOS_CODEX_FAST_TEXT_MODE = "1"
 Remove-Item Env:INKOS_CODEX_REASONING_EFFORT -ErrorAction SilentlyContinue
 
 & (Join-Path $PSScriptRoot "start-inkos-codex.ps1") -ProjectRoot $ProjectRoot -Model $Model
