@@ -128,7 +128,6 @@ function Install-NovelsSkillPresets([string]$Root) {
 
     $installed = @()
     $updated = @()
-    $preserved = @()
 
     Get-ChildItem -Path $sourceRoot -Directory | ForEach-Object {
         $skillName = $_.Name
@@ -141,25 +140,22 @@ function Install-NovelsSkillPresets([string]$Root) {
             New-Item -ItemType Directory -Force -Path $targetSkill | Out-Null
             Copy-Item -Path (Join-Path $sourceSkill "*") -Destination $targetSkill -Recurse -Force
             $installed += $skillName
-            return
-        }
-
-        $sourceVersion = Get-SkillVersion $sourceManifest
-        $targetVersion = Get-SkillVersion $targetManifest
-
-        # Versioned presets can upgrade an older installed preset. Back up the
-        # entire old skill first so local customizations are never destroyed.
-        # Same-version local edits are preserved on normal restarts.
-        if ($null -ne $sourceVersion -and $null -ne $targetVersion -and $sourceVersion -gt $targetVersion) {
-            New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-            $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-            $backupSkill = Join-Path $backupRoot ("{0}-v{1}-{2}" -f $skillName, $targetVersion, $timestamp)
-            Copy-Item -Path $targetSkill -Destination $backupSkill -Recurse -Force
-            Copy-Item -Path (Join-Path $sourceSkill "*") -Destination $targetSkill -Recurse -Force
-            $updated += ("{0} {1}->{2}" -f $skillName, $targetVersion, $sourceVersion)
         }
         else {
-            $preserved += $skillName
+            $sourceVersion = Get-SkillVersion $sourceManifest
+            $targetVersion = Get-SkillVersion $targetManifest
+
+            # Versioned presets can upgrade an older installed preset. Back up
+            # the entire old skill first so local customizations are recoverable.
+            # Same-version local edits remain untouched on normal restarts.
+            if ($null -ne $sourceVersion -and $null -ne $targetVersion -and $sourceVersion -gt $targetVersion) {
+                New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+                $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+                $backupSkill = Join-Path $backupRoot ("{0}-v{1}-{2}" -f $skillName, $targetVersion, $timestamp)
+                Copy-Item -Path $targetSkill -Destination $backupSkill -Recurse -Force
+                Copy-Item -Path (Join-Path $sourceSkill "*") -Destination $targetSkill -Recurse -Force
+                $updated += ("{0} {1}->{2}" -f $skillName, $targetVersion, $sourceVersion)
+            }
         }
     }
 
