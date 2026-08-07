@@ -1,6 +1,6 @@
 param(
     [string]$ProjectRoot = "",
-    [string]$Model = "gpt-5.6-terra"
+    [string]$Model = "gpt-5.6-luna"
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,11 +63,11 @@ New-Item -ItemType Directory -Force -Path $ProjectRoot | Out-Null
 Set-DefaultModel $ProjectRoot $Model
 Ensure-DesktopLauncher
 
-# v3 fiction-optimized bridge:
-# - persistent Codex app-server
-# - text-only agent instructions / no execution environment
-# - Terra/Luna reasoning=none, Sol=low
-# - per-request TTFT/latency diagnostics at http://127.0.0.1:43127/diagnostics
+# Fiction bridge policy:
+# - Luna is the default low-latency drafting model.
+# - Terra remains available for stronger planning/revision.
+# - Sol remains available for the hardest story decisions.
+# - persistent Codex app-server + per-request latency diagnostics.
 $env:INKOS_CODEX_APP_SERVER = "1"
 $env:INKOS_CODEX_FAST_TEXT_MODE = "1"
 Remove-Item Env:INKOS_CODEX_REASONING_EFFORT -ErrorAction SilentlyContinue
